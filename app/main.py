@@ -1,7 +1,7 @@
 """
 AI-Based Schema Designer & Data Manager
 Uses OpenAI GPT to generate SQL schemas from natural language,
-then manages data via PostgreSQL.....
+then manages data via PostgreSQL.....test2..
 """
 
 from fastapi import FastAPI, HTTPException, Depends
