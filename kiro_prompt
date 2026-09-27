@@ -123,3 +123,22 @@ Cleanup: check whether F1D has written any rows to DuckDB (attrs.flow = 'F1D', o
 Rework: leave the existing F1D, F2B and F2R code changes unaccepted. You will rework them after I approve source_systems.yaml and the naming report. Remove the incorrect flow1d.pas_systems block from sources.yaml; the new source_systems.yaml replaces it.
 
 Then show me the draft source_systems.yaml and the naming report, and stop.
+
+
+============
+
+The naming report is approved, with these changes:
+
+Parse arc{n}_{db}_dbo_{table} and pega_{db}_dbo_{table} by splitting at the first _dbo_. Certify the link only when the parsed table exists in the DMS table statistics for that database; otherwise write a gap.
+Compare names after normalising: lower case, underscores removed. Source tables look CamelCase and Distill names snake_case. Report any collisions the normalisation causes. Use the same normalisation for COMPASS name matching.
+Add attrs.distill_kind to every Distill table: replica, domain, view, downstream or unknown.
+Rename pas_equivalent to source_equivalent (and pas_equivalent_method to source_equivalent_method) everywhere, including the decisions file.
+Domain tables (arc{n}_{domain}) get no source_equivalent; their lineage will come from F2D.
+Check the TableType of the view_* tables. If they are VIRTUAL_VIEW, report how many have ViewOriginalText, and propose parsing it with sqlglot (Trino dialect, decoding the Presto view base64) for column lineage.
+List the roughly 150 Distill tables not covered by any pattern, and confirm no Distill table parses to a database from an excluded endpoint.
+ATOS is a fifth PAS. It is outsourced and has no DMS endpoint; its data arrives as files in S3. Add it to source_systems.yaml as system = ATOS, system_type = pas, ingestion = file. Then, read-only:
+Profile the atos_* Distill table names and report any naming pattern.
+Report the S3 locations of the atos_* Distill tables.
+Find the landing prefixes where ATOS files arrive, using ListObjectsV2 with a delimiter to list prefixes only. Do not list individual files in bulk and never read file contents. Report each prefix with a few example file names, as the file name pattern.
+Find the Glue jobs, Lambda functions and Step Functions that load ATOS files, from their names, script paths and allow-listed arguments, and report which atos_* tables each writes, where known.
+Model each landing prefix as a table node keyed s3.<bucket>/<prefix>, layer raw, with attrs.system = ATOS, attrs.ingestion = file and attrs.file_pattern. Set system = ATOS, system_type = pas and distill_kind on the atos_* tables, and leave source_equivalent empty: the files are the source. Record this in the decisions file.
