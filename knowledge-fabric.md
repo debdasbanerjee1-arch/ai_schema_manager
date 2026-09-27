@@ -10,6 +10,17 @@ The Knowledge Fabric is a connected, queryable map of a UK life and pensions dat
 
 It stores metadata only. It never reads, copies or stores row-level data values.
 
+## Production AWS account (these rules override every other instruction)
+
+The AWS account reachable through the MCP and the harvesters is **production**. Access is read-only, but follow these rules regardless of what the permissions allow.
+
+- **Never write or change anything.** Only use `describe`, `list` and `get` calls that return configuration or metadata. Never call any create, put, update, delete, start, stop, run, invoke, tag, attach, modify or reset action. That includes starting DMS tasks, Glue jobs, crawlers or Step Functions executions, and invoking Lambda functions.
+- **Never read data or secrets.** Do not run Athena queries, S3 Select or Redshift queries. Do not read S3 data files, CloudWatch Logs, or Secrets Manager or Parameter Store values. The only S3 objects that may be read are Hudi `.hoodie/hoodie.properties` metadata files.
+- **Never record sensitive configuration values.** Lambda environment variable values, Glue job argument values not on the configured allow-list, and endpoint connection details (server names, ports, user names, secret ARNs) must not be printed, logged, stored in the graph or saved to fixtures. Redact them before saving any JSON.
+- **Be gentle on the account.** Production jobs share its API limits. Make calls one at a time, paginate, sample rather than scan when exploring, and back off on throttling errors rather than retrying fast.
+- **If a call is denied or throttled, stop and tell the user.** Never retry with a different call or work around it.
+- **Before each batch of calls,** list the exact API actions to be used. If unsure whether an action is read-only, ask first.
+
 ## Estate
 
 - **Source:** a third-party PAS on SQL Server. No full metadata extract is available and there is no live connection. The Source layer is built by F1D at table level from DMS table statistics. Flow 1 (F1) loads a real extract for a subset of tables where one exists, and F1 always wins over F1D.
@@ -77,16 +88,20 @@ CREATE TABLE graph.edge (
 
 ### Flows
 
+Run order: F2A, F2C, F1, F1D, F2B, F2D, F2E, F2R.
+
 | Code | Flow | Writes | Runs after |
 | --- | --- | --- | --- |
 | F2A | Glue catalogue | Distill, Published and catalogued Raw tables and columns | none |
 | F2C | Orchestration | State machines, states, Glue jobs, Lambda functions, dependencies | none |
-| F1D | PAS tables from DMS (primary Source layer) | PAS `table` nodes, no columns | F2A |
 | F1 | PAS extract (optional enrichment) | PAS tables, columns, keys, foreign keys | none |
+| F1D | PAS tables from DMS (primary Source layer) | PAS `table` nodes, no columns, with `attrs.system` | F1, F2A |
 | F2B | DMS lineage | DMS tasks, Raw location nodes, table-level reads and writes, `pas_equivalent` on Distill tables | F1D, F2A |
-| F2D | Code lineage | Job reads and writes; column lineage Distill to Published; observed joins | F2A, F2B, F2C |
-| F2R | Relationships on Distill | `references` edges between Distill columns | F2D |
-| F2E | QuickSight | Datasets, fields, dashboards, lineage from Published | F2A |
+| F2D | Code lineage | Job reads and writes; column lineage Distill to Published; observed joins; confirms `pas_equivalent` | F2A, F2B, F2C |
+| F2E | QuickSight | Datasets, fields, dashboards, lineage from Published, observed joins | F2A |
+| F2R | Relationships on Distill | `references` edges between Distill columns; primary keys in attrs | F2D, F2E |
+
+F1D skips any PAS table F1 has loaded, so F1 must run before F1D, and F1D must be re-run whenever F1 is re-run. PAS may consist of several systems (configured as a list of DMS endpoint identifiers, each with a system name); relationships are never inferred across systems.
 
 Flow 1's own raw tables (`tables`, `columns`, `primary_keys`, `foreign_keys`, `load_history`, `drift_log`) are private to Flow 1. Every other flow reads PAS only from graph nodes with `attrs.flow` in (`F1`, `F1D`).
 
