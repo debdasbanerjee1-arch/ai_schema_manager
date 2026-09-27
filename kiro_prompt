@@ -1,0 +1,11 @@
+The PAS metadata extract will not be available. I've updated the steering file. Please:
+
+Build F1D: PAS table nodes from DMS table statistics, for tasks whose source endpoint is PAS (configured by endpoint identifier). No column nodes; origin dms_derived; tier inferred. Skip any table that already has an F1 node, comparing case-insensitively.
+Set attrs.pas_equivalent on each Distill table to its PAS table key, resolved through the DMS target path and the merge job that reads it.
+Build F2R to own references edges between Distill columns:
+the Hudi record key as the primary key (origin hudi_record_key);
+observed joins from F2D's parsed SQL, and later from F2E dataset joins, with attrs.occurrences and attrs.seen_in listing jobs or datasets (origin observed_join, tier proposed);
+Flow 1's name-match rules applied to Distill, using record keys as primary keys (origin name_match, tier inferred).
+F2R runs after F2D.
+
+Show me the plan before changing code.
