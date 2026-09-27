@@ -56,6 +56,61 @@ Approved with the changes below. Before building anything, use the AWS MCP to di
 
 8. **Steering file:** update the Flows table to the run order above, and add this as the first bullet under "Architecture decisions":
 
+
+==========
+
+Stop coding. Do not continue until I have approved the points below. First, list the changes already made in this session so I can review them before accepting anything.
+
+## Source systems: confirmed facts
+
+There are four PAS instances:
+
+| system | product | engine | production database |
+| --- | --- | --- | --- |
+| ARC1 | Composer | SQL Server | PRA |
+| ARC2 | Composer | SQL Server | PRD |
+| ARC3 | Composer | SQL Server | PRW |
+| COMPASS | Compass | Oracle | from its endpoint |
+
+- ARC1, ARC2 and ARC3 are separate PAS instances (separate books of business) running the same product, Composer, so they share table names. PRA, PRD and PRW are their production databases. All three are in scope.
+- COMPASS is a PAS on Oracle. It is not a BlackRock investment system; correct that label. Its schema differs from Composer's.
+- Every other source endpoint (Pega, MI_WAREHOUSE, ReportZone, AdvPortal, Toro, ancillary databases and so on) is a non-PAS source. Keep them in scope as separate systems with their own `system_type`.
+
+## Decisions
+
+1. **Keys:** `src.<engine>.<DatabaseName>.<schema>.<table>` for every source table, with `<engine>` from the endpoint's EngineName (`sqlserver`, `oracle`, `postgres`). The database must be in the key because the three Composer instances share table names. For Oracle, `DatabaseName` is the endpoint's SID or service name and the schema is the owning user. No `system` node: `system` is not an allowed node type in the DDL.
+
+2. **Attributes** on each source table node:
+   - `system`: ARC1, ARC2, ARC3, COMPASS, or the standalone system name (for example Pega, MI_WAREHOUSE).
+   - `system_type`: pas, ancillary, workflow, mi, or other.
+   - `environment_code`: PRA, PRD or PRW for the Composer instances.
+   - `product`: Composer or Compass for the PAS instances.
+   - `product_table`: `<schema>.<table>` for Composer tables only, so the same logical table can be grouped across ARC1, ARC2 and ARC3.
+   - `endpoint` and `database`.
+
+   Where an endpoint identifier shows that an ancillary database belongs to an ARC instance (for example `arc2-chargedef`), set `system` to that instance and `system_type` to ancillary.
+
+3. **`config/source_systems.yaml`:** list all 38 source endpoints with identifier, engine, DatabaseName, system, system_type, environment_code, product, and included (yes/no, with a reason). It must contain exactly four `pas` systems. Show it to me before writing any code.
+
+4. **Distill naming convention:** profile Distill table names per Glue database, including the COMPASS tables, and report the patterns found (for example `<system>_<database>_<schema>_<table>`, as in `arc1_adhok_dbo_transaction_type_component_function`), with the share of tables following each pattern and examples that don't. Where a convention holds, derive `pas_equivalent` by parsing the name, with `pas_equivalent_method = 'naming_convention'`, tier certified once I confirm the convention. Use name matching only for tables that follow no convention.
+
+5. **Name matching scope:** for `pas_equivalent` and for F2R, never match across source databases. So never across ARC1, ARC2, ARC3 and COMPASS, even though ARC1 to ARC3 share table names.
+
+6. **Case:** match names case-insensitively everywhere. Composer record keys are CamelCase and Oracle names are upper case, while Glue column names are lower case. Add tests for both.
+
+7. **Record keys:** read `.hoodie/hoodie.properties` (`hoodie.table.recordkey.fields`) for every Distill table, one call at a time with backoff, and cache the results as redacted fixtures. Store the key as `attrs.primary_key` (ordered list) and `attrs.primary_key_origin = 'hudi_record_key'` on the table, and `attrs.pk_ordinal` on each key column. Add a configurable `key_discriminator_columns` list, starting with `source_system`. If a composite key is one business column plus discriminator columns, use the business column as the key for name matching and store the discriminators in `attrs.key_discriminators`.
+
+8. **Decisions file:** this session has been summarised, so write every confirmed decision above to `docs/decisions/flow-1d-2b-2r.md`, and re-read it before each step. The steering file's production account rules still apply to every AWS call.
+
+## What I need from you now, in this order
+
+1. The list of changes already made in this session.
+2. The draft `config/source_systems.yaml`.
+3. The Distill naming-convention report.
+
+Then stop and wait for my approval before writing any code.
+
+
    > - **Production account:** the AWS account is production. Only read-only `describe`, `list` and `get` calls on configuration and metadata are allowed. Never write, change, start, stop or invoke anything; never read data, logs or secrets; redact sensitive configuration values before saving fixtures; and stop and ask if a call is denied or throttled.
 
 Show me the steering file diff and the discovery findings before changing any code.
