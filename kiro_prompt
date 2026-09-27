@@ -9,3 +9,53 @@ Flow 1's name-match rules applied to Distill, using record keys as primary keys 
 F2R runs after F2D.
 
 Show me the plan before changing code.
+
+
+
+
+===========
+Approved with the changes below. Before building anything, use the AWS MCP to discover the facts from the account. Show me what you found and wait for my confirmation.
+
+## This is a PRODUCTION AWS account. These rules override everything else in this task.
+
+- **Never write or change anything.** Only use `describe`, `list` and `get` calls that return configuration or metadata. Never call any create, put, update, delete, start, stop, run, invoke, tag, attach, modify or reset action, even if it appears to be allowed. That includes starting DMS tasks, Glue jobs, crawlers or Step Functions executions, and invoking Lambda functions.
+- **Never read data or secrets.** Do not run Athena queries, S3 Select or Redshift queries. Do not read S3 data files, CloudWatch Logs, or Secrets Manager or Parameter Store values. The only S3 object you may read is a Hudi table's `.hoodie/hoodie.properties` metadata file.
+- **Never record configuration values that may be sensitive.** Lambda environment variable values, Glue job argument values not on the allow-list, and endpoint connection details (server names, ports, user names, secret ARNs) must not be printed, logged or saved to fixtures. Redact them before saving any JSON.
+- **Be gentle on the account.** Production jobs share its API limits. Make calls one at a time, paginate, sample rather than scan where this task says sample, and back off on any throttling error rather than retrying fast.
+- **If a call is denied or throttled, stop and tell me.** Don't retry with a different call or work around it.
+- **Before each batch of calls,** list the exact API actions you're about to use. If you're unsure whether an action is read-only, ask me first.
+- Save every API response you use, redacted, as a JSON fixture under `data/fixtures/`, so files mode and the tests can reuse it.
+
+## Discovery: report findings, then wait for my confirmation
+
+1. **PAS endpoints:** list the DMS source endpoints with identifier, engine and database name, and the tasks that use each. Propose which are PAS and a system name for each (for example Composer or ARC), as a config block for me to confirm.
+2. **DMS type:** confirm whether the PAS tasks are instance-based or Serverless. Call `describe_table_statistics` (or `describe_replication_table_statistics`) on one PAS task, and report the table count and the distinct `TableState` values.
+3. **Hudi record key:** for 5 Distill tables across different databases, check the Glue table parameters (`hoodie.datasource.write.recordkey.field`, `hoodie.table.recordkey.fields`, `primaryKey`) and `<location>/.hoodie/hoodie.properties` (`hoodie.table.recordkey.fields`). Report where the key was found for each, and how many keys are composite.
+4. **Distill to system mapping:** list the Distill Glue databases, and propose which PAS system each belongs to.
+5. **Name match feasibility:** for one system, report what share of Distill tables have a name matching a PAS table from the DMS statistics, case-insensitively.
+
+## Plan changes
+
+1. **Run order:** F2A, F2C, F1, F1D, F2B, F2D, F2E, F2R. F1 must run before F1D, because F1D skips tables F1 has loaded and the reverse order fails on the primary key. Re-run F1D whenever F1 is re-run. F2R runs last because it uses joins from F2D and F2E.
+
+2. **Multiple PAS systems:** replace `pas_db` and the regex endpoint patterns with the confirmed explicit list of `{endpoint_identifier, system}`. Take the database from each endpoint's `DatabaseName`, so keys are `pas_mssql.<DatabaseName>.<schema>.<table>`, and set `attrs.system` on every PAS table node.
+
+3. **F1D:** PAS `table` nodes from DMS table statistics, for the confirmed PAS tasks only; no column nodes; origin `dms_derived`, tier inferred (stored in attrs). Include every table and record `TableState` in attrs. Skip any table that already has an F1 node, comparing case-insensitively.
+
+4. **F2B:** F2C doesn't know which tables a job reads or writes; that comes from F2D. So set `pas_equivalent` on Distill tables now by name match, within the confirmed Distill-database-to-system mapping, with `pas_equivalent_method = 'name_match'`, tier inferred. F2D will later confirm it via DMS, the Raw location and the merge job, upgrade it to `dms+merge` and certified, and write a gaps entry wherever the two disagree. Uncatalogued Raw paths become `table` nodes keyed `s3.<bucket>/<prefix>/<schema>/<table>`, layer raw, `attrs.catalogued = false`, with no columns. No column-level lineage into Raw.
+
+5. **F2R:**
+   - No self-referencing edges, because the DDL forbids them. Store the primary key as `attrs.primary_key` (ordered list) and `attrs.primary_key_origin` on the table, and `attrs.pk_ordinal` on each key column.
+   - Read the Hudi record key in the order found reliable in discovery step 3, recording the source used. Support composite keys; the single-column name-match rule simply won't apply to them.
+   - Name matching follows the steering file's rules, restricted to tables within the same PAS system.
+   - Read observed joins from an input that F2D and F2E will fill later; leave it empty for now.
+
+6. **Generic names:** add `status, date, amount, seq_no, version, created_by, updated_on, dms_commit_ts` to the generic column names list.
+
+7. **Tests and gaps:** include unit tests and gaps reports for F1D, F2B and F2R, using the saved fixtures. Each rule needs a positive and a negative case, including: F1 and F1D overlap, a composite record key, a record key found only in `hoodie.properties`, and a name match that would cross systems and must be rejected.
+
+8. **Steering file:** update the Flows table to the run order above, and add this as the first bullet under "Architecture decisions":
+
+   > - **Production account:** the AWS account is production. Only read-only `describe`, `list` and `get` calls on configuration and metadata are allowed. Never write, change, start, stop or invoke anything; never read data, logs or secrets; redact sensitive configuration values before saving fixtures; and stop and ask if a call is denied or throttled.
+
+Show me the steering file diff and the discovery findings before changing any code.
