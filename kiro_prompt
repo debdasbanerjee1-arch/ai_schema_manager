@@ -114,3 +114,12 @@ Then stop and wait for my approval before writing any code.
    > - **Production account:** the AWS account is production. Only read-only `describe`, `list` and `get` calls on configuration and metadata are allowed. Never write, change, start, stop or invoke anything; never read data, logs or secrets; redact sensitive configuration values before saving fixtures; and stop and ask if a call is denied or throttled.
 
 Show me the steering file diff and the discovery findings before changing any code.
+
+========
+
+Endpoints: use option A, the existing fixture dms_source_endpoints.json. First check it for sensitive values (server name, port, user name, secret ARNs, anything in connection settings). If any are present, replace them with "<redacted>" and tell me what you redacted. Keep only identifier, EndpointType, EngineName, DatabaseName and ARN.
+Distill profiling: yes, query the local DuckDB, read-only. Write the report to docs/reports/distill-naming-profile.md, with the patterns found, the share of tables following each pattern per Glue database (including the COMPASS and ancillary databases), and up to 10 examples that don't fit per database.
+Cleanup: check whether F1D has written any rows to DuckDB (attrs.flow = 'F1D', or any system nodes). If so, tell me the counts. Do not delete anything yet.
+Rework: leave the existing F1D, F2B and F2R code changes unaccepted. You will rework them after I approve source_systems.yaml and the naming report. Remove the incorrect flow1d.pas_systems block from sources.yaml; the new source_systems.yaml replaces it.
+
+Then show me the draft source_systems.yaml and the naming report, and stop.
