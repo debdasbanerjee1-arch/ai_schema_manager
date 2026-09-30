@@ -142,3 +142,27 @@ Report the S3 locations of the atos_* Distill tables.
 Find the landing prefixes where ATOS files arrive, using ListObjectsV2 with a delimiter to list prefixes only. Do not list individual files in bulk and never read file contents. Report each prefix with a few example file names, as the file name pattern.
 Find the Glue jobs, Lambda functions and Step Functions that load ATOS files, from their names, script paths and allow-listed arguments, and report which atos_* tables each writes, where known.
 Model each landing prefix as a table node keyed s3.<bucket>/<prefix>, layer raw, with attrs.system = ATOS, attrs.ingestion = file and attrs.file_pattern. Set system = ATOS, system_type = pas and distill_kind on the atos_* tables, and leave source_equivalent empty: the files are the source. Record this in the decisions file.
+---
+
+Good progress. Before running anything else:
+Don't touch tempcreds.py. The SyntaxWarning isn't the cause; the credentials had expired, and I'm refreshing them.
+F1D count. It reported 1,859 tables but the graph has 1,576. Confirm the difference is the same table appearing in more than one DMS task, and show the query that proves it.
+F2B edges. Check git log and git diff for F2B and tell me whether the edge code was never built or was lost. Then propose, as a plan (don't code yet):
+Raw location nodes: s3.<bucket>/<prefix>/<schema>/<table>, layer raw, catalogued = false where there's no Glue table
+ATOS landing location nodes
+reads edges: DMS task → source table (origin dms_mapping, certified)
+writes edges: DMS task → Raw location (origin dms_mapping, certified)
+table-level derives_from edges: source table → Raw table (attrs.level = table, transform_class = identity, job_key = the DMS task)
+Also confirm that source_equivalent and distill_kind were set on this run.
+F2R cache. Propose a record-key cache in data/fixtures/hudi_record_keys.json, keyed by table location. F2R should read S3 only for tables missing from the cache, and a --refresh flag should force a full re-read. Once I refresh the credentials, run F2R once to fill the cache. Before starting, list the exact API actions it will use (s3:GetObject on .hoodie/hoodie.properties only), and read one table at a time with backoff.
+Flow ownership. F2B and F2R set attributes on Distill nodes that F2A owns, so any F2A reload wipes them. Propose scripts/run_all.py:
+runs F2A, F2C, F2C-DDB, F1, F1D, F2B, F2R in that order
+uses one database path, outside OneDrive, and prints it
+backs up the database first
+stops at the first failure
+Checks. Run these read-only now:
+checks 1 to 9 of verify_f1d_f2b_f2r.sql
+the F1 FK duplicate check
+the attrs.flow value on the F2C-DDB rows
+Then stop for my review.
+Once F2R has run and the checks come back clean, commit to Git before starting F2D.
