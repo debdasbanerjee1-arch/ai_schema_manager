@@ -1,5 +1,16 @@
 # AI Schema Designer & Data Manager
 
+
+The last run failed because you wrote files under %TEMP% (C:\Users\isapddb\AppData\Local\Temp\kf_review), and your checkpointing can't handle paths outside the workspace.
+
+Redo the graph gaps report with these rules:
+- Write any scripts and output only inside the workspace, under tmp/kf_review/. Create the folder if needed, and add tmp/ to .gitignore if it isn't there. Nothing in tmp/ is ever committed: it holds real table and job names.
+- Don't write anywhere outside the workspace, including %TEMP% and C:\kf-data (read from C:\kf-data only).
+- Open the graph read-only.
+- Put the final report in tmp/kf_review/graph-gaps-report.md and show me a summary here.
+- Change no project code and make no AWS calls. Report only, then stop.
+
+
 AI-powered REST API that generates PostgreSQL schemas from plain English
 and provides full CRUD data management — all running in Docker.
 
